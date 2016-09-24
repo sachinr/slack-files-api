@@ -12,37 +12,69 @@ require 'googleauth'
 require 'google/apis/vision_v1'
 require 'rmagick'
 
-PATH='./files/zuck.jpg'
+class FaceDetection
+  Vision = Google::Apis::VisionV1
 
-Vision = Google::Apis::VisionV1
-service = Vision::VisionService.new
+ def initialize(image_path, output_path)
+   @path = image_path
+   @output_path = output_path
+   init_google
+ end
 
-scopes = ['https://www.googleapis.com/auth/cloud-platform']
-authorization = Google::Auth.get_application_default(scopes)
-service.authorization = authorization
+ def process_image
+   draw_faces(detect, @output_path)
+ end
 
-content = File.read(PATH)
-image = Vision::Image.new(content: content)
-feature = Vision::Feature.new(type: 'FACE_DETECTION')
-req = Vision::BatchAnnotateImagesRequest.new(requests: [
-  {
-    image: image,
-    features: [feature]
-  }
-])
-# https://cloud.google.com/prediction/docs/reference/v1.6/performance#partial
-res = service.annotate_image(req, fields: 'responses(faceAnnotations(fd_bounding_poly))')
+ def detect
+   google_vision_face_detect
+ end
 
-img = Magick::Image.read(PATH)[0]
-gc = Magick::Draw.new
+ def draw_faces(face_annotations, output_path)
+   img = Magick::Image.read(@path)[0]
+   gc = Magick::Draw.new
 
-res.responses.first.face_annotations.each do |face|
-  arr = face.fd_bounding_poly.to_h[:vertices].map{|v| v.values}
-  points = arr.map{ |pair| pair.reverse }.flatten
-  gc.stroke('red')
-  gc.fill_opacity('0%')
-  gc.polygon(*points)
-  gc.draw(img)
+   face_annotations.each do |face|
+     points = reverse_and_flatten_face_annotations(face)
+     gc.stroke('red')
+     gc.fill_opacity('0%')
+     gc.polygon(*points)
+     gc.draw(img)
+   end
+
+   img.write(output_path)
+ end
+
+ private
+ def init_google
+   @service = Vision::VisionService.new
+
+   scopes = ['https://www.googleapis.com/auth/cloud-platform']
+   authorization = Google::Auth.get_application_default(scopes)
+   @service.authorization = authorization
+ end
+
+ def google_vision_face_detect
+   content = File.read(@path)
+   image = Vision::Image.new(content: content)
+   feature = Vision::Feature.new(type: 'FACE_DETECTION')
+   req = Vision::BatchAnnotateImagesRequest.new(
+     requests: [{
+       image: image,
+       features: [feature]
+     }]
+   )
+
+   # https://cloud.google.com/prediction/docs/reference/v1.6/performance#partial
+   res = @service.annotate_image(req, fields: 'responses(faceAnnotations)')
+
+   return res.responses.first.face_annotations
+ end
+
+ def reverse_and_flatten_face_annotations(face_hash)
+   arr = face_hash.fd_bounding_poly.to_h[:vertices].map{|v| v.values}
+   arr.map{ |pair| pair.reverse }.flatten
+ end
+
 end
 
-img.write('divided.jpeg')
+

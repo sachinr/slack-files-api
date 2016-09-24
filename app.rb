@@ -2,7 +2,7 @@ require 'rest-client'
 require 'sinatra'
 require 'json'
 require 'chunky_png'
-
+require_relative './image-detection'
 
 before do
   @teams ||= load_data
@@ -55,8 +55,8 @@ post '/events' do
       if @team && event.user != @team.bot["bot_user_id"]
         file = event.file
         unless already_processing?(file.timestamp)
-          fetch_and_compose_png(file)
-          upload(file, event.channel) if file.filetype == "png"
+          fetch_and_compose_image(file)
+          upload(file, event.channel) if file.filetype == "jpg"
         end
       end
     end
@@ -65,17 +65,17 @@ post '/events' do
   return 200
 end
 
-def fetch_and_compose_png(file)
-  p "file_and_compose_png"
+def fetch_and_compose_image(file)
+  p "file_and_compose_image"
   File.open("./tmp/#{file.timestamp}", 'wb') do |f|
-    f << fetch_png(file.url_private)
+    f << fetch_image(file.url_private)
   end
 
-  compose_png(file.timestamp)
+  compose_image(file.timestamp)
 end
 
-def fetch_png(url)
-  p "fetch_png"
+def fetch_image(url)
+  p "fetch_image"
   res = RestClient.get(url, {"Authorization" => "Bearer #{@team.access_token}" })
   if res.code == 200
     return res.body
@@ -84,12 +84,15 @@ def fetch_png(url)
   end
 end
 
-def compose_png(filename)
-  p "compose_png"
-  avatar = ChunkyPNG::Image.from_file("./tmp/#{filename}")
-  badge  = ChunkyPNG::Image.from_file('./files/overlay.png')
-  avatar.compose!(badge, 100, 100)
-  avatar.save("./tmp/composed/#{filename}", :fast_rgba) # Force the fast saving routine.
+def compose_image(filename)
+  p "compose_image"
+
+  fd = FaceDetection.new("./tmp/#{filename}", "./tmp/composed/#{filename}")
+  fd.process_image
+  #avatar = ChunkyPNG::Image.from_file("./tmp/#{filename}")
+  #badge  = ChunkyPNG::Image.from_file('./files/overlay.png')
+  #avatar.compose!(badge, 100, 100)
+  #avatar.save("./tmp/composed/#{filename}", :fast_rgba) # Force the fast saving routine.
 end
 
 def upload(file, channel)
