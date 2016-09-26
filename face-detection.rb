@@ -11,9 +11,17 @@
 require 'googleauth'
 require 'google/apis/vision_v1'
 require 'rmagick'
+require 'byebug'
 
 class FaceDetection
   Vision = Google::Apis::VisionV1
+
+  Emotions = {
+    joy_likelihood: "joy",
+    surprise_likelihood: "open_mouth",
+    anger_likelihood: "angry",
+    sorrow_likelihood: "weary"
+  }
 
  def initialize(image_path, output_path)
    @path = image_path
@@ -22,26 +30,56 @@ class FaceDetection
  end
 
  def process_image
-   draw_faces(detect, @output_path)
+   draw_faces
  end
 
  def detect
    google_vision_face_detect
  end
 
- def draw_faces(face_annotations, output_path)
+ def draw_faces
+   @face_annotations ||= detect
    img = Magick::Image.read(@path)[0]
    gc = Magick::Draw.new
 
-   face_annotations.each do |face|
-     points = reverse_and_flatten_face_annotations(face)
-     gc.stroke('red')
-     gc.fill_opacity('0%')
-     gc.polygon(*points)
-     gc.draw(img)
+   if @face_annotations && !@face_annotations.empty?
+     @face_annotations.each do |face|
+       points = reverse_and_flatten_face_annotations(face)
+       gc.stroke('red')
+       gc.stroke_width(4)
+       gc.fill_opacity('0%')
+       gc.polygon(*points)
+       gc.draw(img)
+     end
+
+     img.write(@output_path)
+
+     return true
    end
 
-   img.write(output_path)
+   return false
+ end
+
+ def find_emotions
+   @face_annotations ||= detect
+   emotion_emojis = []
+
+   if @face_annotations && !@face_annotations.empty?
+     @face_annotations.each do |face|
+       p face
+       Emotions.each do |emotion|
+         if ["POSSIBLE", "LIKELY", "VERY_LIKELY"].include? face.send(emotion[0])
+           emotion_emojis << emotion[1]
+         end
+       end
+     end
+   end
+
+   emotion_emojis
+ end
+
+ def emotions
+   @emotions ||= find_emotions
  end
 
  private
